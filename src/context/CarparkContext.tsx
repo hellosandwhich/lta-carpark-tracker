@@ -32,6 +32,9 @@ interface CarparkContextType {
   openFeeCalc: (cp: Carpark) => void;
   isBackendDocsOpen: boolean;
   setIsBackendDocsOpen: (open: boolean) => void;
+  isLtaConnected: boolean;
+  ltaStatusMessage: string;
+  isLtaLoading: boolean;
   filteredCarparks: (Carpark & { distanceKm: number })[];
   kpiStats: {
     totalLots: number;
@@ -109,19 +112,68 @@ export const CarparkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsFeeCalcOpen(true);
   }, []);
 
-  // Real-time flux simulator (simulating LTA DataMall / Data.gov.sg live lot updates)
-  const refreshNow = useCallback(() => {
+  const [isLtaConnected, setIsLtaConnected] = useState<boolean>(false);
+  const [ltaStatusMessage, setLtaStatusMessage] = useState<string>('Simulation Active (Awaiting LTA Key)');
+  const [isLtaLoading, setIsLtaLoading] = useState<boolean>(false);
+
+  // Real-time lot sync (queries /api/carparkavailability and falls back to simulation)
+  const refreshNow = useCallback(async () => {
+    setIsLtaLoading(true);
+    try {
+      const response = await fetch('/api/carparkavailability');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && Array.isArray(data.value) && data.value.length > 0) {
+          setIsLtaConnected(true);
+          setLtaStatusMessage(`Connected to LTA DataMall v2 (${data.count} lots streamed)`);
+          
+          // Map LTA lots to our carparks
+          const ltaMap = new Map<string, number>();
+          data.value.forEach((item: any) => {
+            if (item.CarParkID) {
+              ltaMap.set(String(item.CarParkID).toUpperCase(), Number(item.AvailableLots) || 0);
+            }
+          });
+
+          setCarparks(prev =>
+            prev.map(cp => {
+              const matchedLots = ltaMap.get(cp.carparkNumber.toUpperCase());
+              if (matchedLots !== undefined) {
+                return {
+                  ...cp,
+                  lots: {
+                    ...cp.lots,
+                    car: { ...cp.lots.car, available: matchedLots },
+                  },
+                  lastUpdated: new Date().toISOString(),
+                };
+              }
+              return cp;
+            })
+          );
+          setLastSyncTime(new Date());
+          setIsLtaLoading(false);
+          return;
+        } else if (data.error) {
+          setIsLtaConnected(false);
+          setLtaStatusMessage(data.error);
+        }
+      }
+    } catch {
+      // Backend not running or offline; proceed with realistic client simulation
+      setIsLtaConnected(false);
+    }
+    setIsLtaLoading(false);
+
+    // Realistic simulation flux
     setCarparks(prev => {
       return prev.map(cp => {
-        // Fluctuate car lots by -2 to +2
         const carDelta = Math.floor(Math.random() * 5) - 2;
         const newCarAvail = Math.max(0, Math.min(cp.lots.car.total, cp.lots.car.available + carDelta));
 
-        // Motorcycle lots fluctuation
         const motoDelta = Math.floor(Math.random() * 3) - 1;
         const newMotoAvail = Math.max(0, Math.min(cp.lots.motorcycle.total, cp.lots.motorcycle.available + motoDelta));
 
-        // EV fluctuation if present
         let newEv = cp.evCharging;
         if (cp.evCharging) {
           const evDelta = Math.random() > 0.6 ? (Math.random() > 0.5 ? 1 : -1) : 0;
@@ -342,6 +394,9 @@ export const CarparkProvider: React.FC<{ children: React.ReactNode }> = ({ child
         openFeeCalc,
         isBackendDocsOpen,
         setIsBackendDocsOpen,
+        isLtaConnected,
+        ltaStatusMessage,
+        isLtaLoading,
         filteredCarparks,
         kpiStats,
       }}

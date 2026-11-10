@@ -10,6 +10,8 @@ export const Header: React.FC = () => {
     isLiveSyncing,
     toggleLiveSync,
     lastSyncTime,
+    isLtaConnected,
+    isLtaLoading,
     setIsFeeCalcOpen,
     setIsBackendDocsOpen,
     setViewMode,
@@ -103,29 +105,46 @@ export const Header: React.FC = () => {
 
           {/* Zone 3: 1 primary action + theme/sync utilities */}
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* Live simulation pulse toggle */}
+            {/* Live simulation / LTA status toggle */}
             <button
               onClick={toggleLiveSync}
-              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                isLiveSyncing
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                isLtaConnected
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700'
+                  : isLiveSyncing
+                  ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
                   : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700'
               }`}
-              title={isLiveSyncing ? 'Live simulation running (synced every 20s)' : 'Live simulation paused'}
+              title={
+                isLtaConnected
+                  ? 'Connected to Live Singapore LTA DataMall v2 stream'
+                  : isLiveSyncing
+                  ? 'Simulation active (Configure LTA_DATAMALL_ACCOUNT_KEY in .env for live LTA stream)'
+                  : 'Sync paused'
+              }
             >
-              <Radio className={`w-3.5 h-3.5 ${isLiveSyncing ? 'animate-pulse text-emerald-600 dark:text-emerald-400' : ''}`} />
+              <Radio
+                className={`w-3.5 h-3.5 ${
+                  isLiveSyncing
+                    ? isLtaConnected
+                      ? 'animate-pulse text-emerald-600 dark:text-emerald-400'
+                      : 'animate-pulse text-blue-600 dark:text-blue-400'
+                    : ''
+                }`}
+              />
               <span className="tabular-nums font-mono">
-                {isLiveSyncing ? 'Live Sync' : 'Paused'}
+                {!isLiveSyncing ? 'Paused' : isLtaConnected ? 'LTA Live' : 'Sim Sync'}
               </span>
             </button>
 
             {/* Manual Refresh */}
             <button
               onClick={refreshNow}
-              className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-              title="Refresh availability now"
+              disabled={isLtaLoading}
+              className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              title="Refresh availability now from /api/carparkavailability"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 ${isLtaLoading ? 'animate-spin text-rose-600' : ''}`} />
             </button>
 
             {/* Theme Toggle */}

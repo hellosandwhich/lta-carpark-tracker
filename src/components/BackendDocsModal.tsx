@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
 import { useCarpark } from '../context/CarparkContext';
-import { X, Code2, Server, CheckCircle2, Copy, Check } from 'lucide-react';
+import { X, Server, CheckCircle2, Copy, Check, Play, RefreshCw, AlertCircle } from 'lucide-react';
 
 export const BackendDocsModal: React.FC = () => {
-  const { isBackendDocsOpen, setIsBackendDocsOpen, carparks } = useCarpark();
-  const [activeTab, setActiveTab] = useState<'lta' | 'server' | 'json'>('lta');
+  const { isBackendDocsOpen, setIsBackendDocsOpen, carparks, isLtaConnected, ltaStatusMessage } = useCarpark();
+  const [activeTab, setActiveTab] = useState<'endpoints' | 'test' | 'json'>('endpoints');
   const [copied, setCopied] = useState(false);
+
+  // Live tester state
+  const [testEndpoint, setTestEndpoint] = useState<'/api/health' | '/api/carparkavailability'>('/api/health');
+  const [testResult, setTestResult] = useState<any>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<number | null>(null);
 
   if (!isBackendDocsOpen) return null;
 
@@ -15,33 +21,24 @@ export const BackendDocsModal: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const runEndpointTest = async (endpoint: '/api/health' | '/api/carparkavailability') => {
+    setIsTesting(true);
+    setTestResult(null);
+    setTestStatus(null);
+    try {
+      const res = await fetch(endpoint);
+      setTestStatus(res.status);
+      const data = await res.json();
+      setTestResult(data);
+    } catch (err: any) {
+      setTestStatus(500);
+      setTestResult({ error: err.message || 'Network request failed' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   const sampleJson = JSON.stringify(carparks.slice(0, 2), null, 2);
-
-  const serverSnippet = `// server.ts snippet for Singapore LTA DataMall proxy
-import express from 'express';
-import dotenv from 'dotenv';
-dotenv.config();
-
-const app = express();
-const LTA_API_URL = 'https://datamall2.mytransport.sg/ltaodataservice/CarParkAvailabilityv2';
-const HDB_API_URL = 'https://api.data.gov.sg/v1/transport/carpark-availability';
-
-app.get('/api/carparks/live', async (req, res) => {
-  try {
-    const ltaKey = process.env.LTA_DATAMALL_API_KEY;
-    const response = await fetch(LTA_API_URL, {
-      headers: {
-        'AccountKey': ltaKey || '',
-        'accept': 'application/json'
-      }
-    });
-    const data = await response.json();
-    // Return structured payload mapped directly to ParkSG Carpark schema
-    res.json({ success: true, timestamp: new Date().toISOString(), value: data.value });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -54,10 +51,10 @@ app.get('/api/carparks/live', async (req, res) => {
             </div>
             <div>
               <h2 className="text-lg font-bold text-neutral-900 dark:text-white">
-                Backend Connection Specifications
+                Serverless LTA DataMall Endpoints
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                LTA DataMall & Data.gov.sg API integration mapping for future server connect
+                Live endpoints located in project root <code className="font-mono text-[11px] bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded">/api/</code>
               </p>
             </div>
           </div>
@@ -73,24 +70,27 @@ app.get('/api/carparks/live', async (req, res) => {
         {/* Tab switcher */}
         <div className="flex items-center gap-2 px-6 pt-4 border-b border-neutral-100 dark:border-neutral-800 text-xs">
           <button
-            onClick={() => setActiveTab('lta')}
+            onClick={() => setActiveTab('endpoints')}
             className={`pb-2.5 font-medium border-b-2 transition-colors cursor-pointer ${
-              activeTab === 'lta'
+              activeTab === 'endpoints'
                 ? 'border-neutral-900 text-neutral-900 dark:border-white dark:text-white font-bold'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
             }`}
           >
-            LTA DataMall v2 Specs
+            Endpoint Documentation
           </button>
           <button
-            onClick={() => setActiveTab('server')}
+            onClick={() => {
+              setActiveTab('test');
+              if (!testResult) runEndpointTest('/api/health');
+            }}
             className={`pb-2.5 font-medium border-b-2 transition-colors cursor-pointer ${
-              activeTab === 'server'
+              activeTab === 'test'
                 ? 'border-neutral-900 text-neutral-900 dark:border-white dark:text-white font-bold'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
             }`}
           >
-            Express Proxy Setup
+            Live Endpoint Tester
           </button>
           <button
             onClick={() => setActiveTab('json')}
@@ -100,94 +100,134 @@ app.get('/api/carparks/live', async (req, res) => {
                 : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
             }`}
           >
-            Live JSON Schema ({carparks.length} items)
+            Active Carpark Schema ({carparks.length})
           </button>
         </div>
 
         {/* Content Body */}
         <div className="p-6 max-h-[65vh] overflow-y-auto space-y-4 text-xs">
-          {activeTab === 'lta' && (
+          {activeTab === 'endpoints' && (
             <div className="space-y-4 text-neutral-700 dark:text-neutral-300">
-              <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-2">
-                <span className="font-bold text-neutral-900 dark:text-white block">
-                  Official Singapore Government Carpark APIs
-                </span>
-                <p>
-                  ParkSG's frontend schemas are 100% compliant with Singapore's two standard open government transport datasets:
+              {/* Endpoint 1: /api/carparkavailability.ts */}
+              <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 font-mono">
+                      GET
+                    </span>
+                    <span className="font-mono font-bold text-neutral-900 dark:text-white text-sm">
+                      /api/carparkavailability
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-neutral-500 font-mono">/api/carparkavailability.ts</span>
+                </div>
+                <p className="text-neutral-600 dark:text-neutral-400">
+                  Proxies to LTA DataMall v2 (<code className="font-mono text-[11px]">https://datamall2.mytransport.sg/ltaodataservice/CarParkAvailabilityv2</code>) with the required <code className="font-mono text-[11px]">AccountKey</code> header.
                 </p>
-                <ul className="list-disc list-inside space-y-1 text-neutral-600 dark:text-neutral-400 pl-1">
-                  <li>
-                    <strong>LTA DataMall:</strong> <code className="font-mono text-[11px] bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded">CarParkAvailabilityv2</code> (Real-time URA, LTA, and Commercial mall lots, updated every 1 min).
-                  </li>
-                  <li>
-                    <strong>Data.gov.sg:</strong> <code className="font-mono text-[11px] bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded">/v1/transport/carpark-availability</code> (Real-time HDB multi-storey carparks).
-                  </li>
-                </ul>
+                <div className="p-2.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg font-mono text-[11px] text-neutral-700 dark:text-neutral-300 space-y-1">
+                  <div><strong>Environment Key:</strong> LTA_DATAMALL_ACCOUNT_KEY (in .env)</div>
+                  <div><strong>Cache TTL:</strong> 45 seconds (in-memory rate-limit protection)</div>
+                  <div><strong>Fallback:</strong> When no key is provided, returns helpful status without crashing</div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <span className="font-bold text-neutral-900 dark:text-white block">
-                  Frontend Mapping Contract
-                </span>
-                <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded-lg">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-neutral-100 dark:bg-neutral-800 text-[11px] font-mono uppercase text-neutral-500">
-                      <tr>
-                        <th className="p-2 border-b border-neutral-200 dark:border-neutral-700">LTA Field</th>
-                        <th className="p-2 border-b border-neutral-200 dark:border-neutral-700">ParkSG Schema</th>
-                        <th className="p-2 border-b border-neutral-200 dark:border-neutral-700">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-mono text-[11px]">
-                      <tr>
-                        <td className="p-2">CarParkID</td>
-                        <td className="p-2">carparkNumber</td>
-                        <td className="p-2">string</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2">Area / Development</td>
-                        <td className="p-2">name</td>
-                        <td className="p-2">string</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2">AvailableLots</td>
-                        <td className="p-2">lots.car.available</td>
-                        <td className="p-2">number</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2">Location</td>
-                        <td className="p-2">coordinates (lat, lng)</td>
-                        <td className="p-2">object</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2">Agency</td>
-                        <td className="p-2">agency (HDB|URA|LTA)</td>
-                        <td className="p-2">enum</td>
-                      </tr>
-                    </tbody>
-                  </table>
+              {/* Endpoint 2: /api/health.ts */}
+              <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-400 font-mono">
+                      GET
+                    </span>
+                    <span className="font-mono font-bold text-neutral-900 dark:text-white text-sm">
+                      /api/health
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-neutral-500 font-mono">/api/health.ts</span>
+                </div>
+                <p className="text-neutral-600 dark:text-neutral-400">
+                  Health verification endpoint reporting server uptime, environment, and whether the LTA DataMall AccountKey is configured.
+                </p>
+              </div>
+
+              {/* Notice */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <strong>No hardcoded keys:</strong> The server reads <code className="font-mono text-[11px]">process.env.LTA_DATAMALL_ACCOUNT_KEY</code>. You can set your key in <code className="font-mono text-[11px]">.env</code> whenever you are ready, or pass an <code className="font-mono text-[11px]">AccountKey</code> header directly in requests.
                 </div>
               </div>
             </div>
           )}
 
-          {activeTab === 'server' && (
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-neutral-500">
-                  Ready-to-drop Express proxy route for server.ts:
-                </span>
+          {activeTab === 'test' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleCopy(serverSnippet)}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-800 dark:text-neutral-200 cursor-pointer"
+                  onClick={() => {
+                    setTestEndpoint('/api/health');
+                    runEndpointTest('/api/health');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg font-medium text-xs transition-colors cursor-pointer ${
+                    testEndpoint === '/api/health'
+                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                  }`}
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copied' : 'Copy Code'}</span>
+                  Test /api/health
+                </button>
+                <button
+                  onClick={() => {
+                    setTestEndpoint('/api/carparkavailability');
+                    runEndpointTest('/api/carparkavailability');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg font-medium text-xs transition-colors cursor-pointer ${
+                    testEndpoint === '/api/carparkavailability'
+                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                  }`}
+                >
+                  Test /api/carparkavailability
+                </button>
+
+                <button
+                  onClick={() => runEndpointTest(testEndpoint)}
+                  disabled={isTesting}
+                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors text-xs font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+                  <span>{isTesting ? 'Calling...' : 'Execute'}</span>
                 </button>
               </div>
-              <pre className="p-3.5 bg-neutral-900 text-neutral-100 rounded-xl overflow-x-auto font-mono text-[11px] leading-relaxed">
-                {serverSnippet}
-              </pre>
+
+              {testStatus !== null && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-neutral-600 dark:text-neutral-400">Response Status:</span>
+                  <span
+                    className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                      testStatus >= 200 && testStatus < 300
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400'
+                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400'
+                    }`}
+                  >
+                    HTTP {testStatus}
+                  </span>
+                </div>
+              )}
+
+              <div className="relative">
+                <pre className="p-3.5 bg-neutral-900 text-neutral-100 rounded-xl overflow-x-auto font-mono text-[11px] max-h-72 leading-relaxed">
+                  {testResult ? JSON.stringify(testResult, null, 2) : '// Click Execute to invoke endpoint'}
+                </pre>
+                {testResult && (
+                  <button
+                    onClick={() => handleCopy(JSON.stringify(testResult, null, 2))}
+                    className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 cursor-pointer"
+                  >
+                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -195,7 +235,7 @@ app.get('/api/carparks/live', async (req, res) => {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-neutral-500">
-                  Current Frontend Active Carpark Data Preview:
+                  Current Frontend Active Carpark Data Structure:
                 </span>
                 <button
                   onClick={() => handleCopy(sampleJson)}
@@ -216,7 +256,7 @@ app.get('/api/carparks/live', async (req, res) => {
         <div className="p-4 bg-neutral-50 dark:bg-neutral-950/60 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-center text-xs text-neutral-500">
           <div className="flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>Frontend State & Data Structure Ready for Seamless Backend Hookup</span>
+            <span>Serverless Endpoints Active in /api</span>
           </div>
           <button
             onClick={() => setIsBackendDocsOpen(false)}
