@@ -1,0 +1,6 @@
+{
+  "name": "ParkSG - Real-Time Singapore Carpark Availability",
+  "description": "Live Singapore carpark lot availability tracker covering HDB, URA, LTA, and commercial mall parking with interactive maps, fee calculators, and EV charging status.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
